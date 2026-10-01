@@ -7,7 +7,7 @@ Oracle Query Optimizer (Optimus Oracle)
 по оптимизации от LLM-моделей.
 
 Зависимости:
-    pip install oracledb ollama PyQt6 OpenAI
+    pip install oracledb PyQt6 ollama OpenAI litellm
 """
 
 import sys
@@ -309,9 +309,13 @@ class MainWindow(QMainWindow):
 
         file_menu = menubar.addMenu("Файл")
 
-        export_action = QAction("Экспорт отчёта...", self)
-        export_action.triggered.connect(self.on_export_report)
-        file_menu.addAction(export_action)
+        export_all_data_action = QAction("Экспорт отчёта для всех данных...", self)
+        export_all_data_action.triggered.connect(self.on_export_all_data_report)
+        file_menu.addAction(export_all_data_action)
+
+        export_selected_data_action = QAction("Экспорт отчёта текущей записи...", self)
+        export_selected_data_action.triggered.connect(self.on_export_selected_data_report)
+        file_menu.addAction(export_selected_data_action)
 
         file_menu.addSeparator()
         exit_action = QAction("Выход", self)
@@ -628,7 +632,7 @@ class MainWindow(QMainWindow):
             return None
         return self.ash_table.item(rows[0].row(), 0).text() + '_' + self.ash_table.item(rows[0].row(), 1).text()
 
-    def on_export_report(self):
+    def on_export_all_data_report(self):
         if not self.long_query_results:
             QMessageBox.information(self, "Экспорт", "Нет данных для экспорта")
             return
@@ -665,6 +669,52 @@ class MainWindow(QMainWindow):
             if sql_id in self.llm_cache:
                 lines.append(f"\nРекомендации LLM:\n{self.llm_cache[sql_id]}")
             lines.append("-" * 80)
+
+        Path(path).write_text("\n".join(lines), encoding="utf-8")
+        QMessageBox.information(self, "Экспорт", f"Отчёт сохранён: {path}")
+
+    def on_export_selected_data_report(self):
+        if not self.long_query_results:
+            QMessageBox.information(self, "Экспорт", "Нет данных для экспорта")
+            return
+
+        rows = self.ash_table.selectionModel().selectedRows()
+        if not rows:
+            QMessageBox.information(self, "Экспорт", "Нет выделенной записи для экспорта")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить отчёт",
+            f"oracle_optimization_{datetime.now():%Y%m%d_%H%M%S}.txt",
+            "Text files (*.txt);;All files (*)"
+        )
+        if not path:
+            return
+
+        lines = []
+        lines.append(f"Oracle Query Optimizer — Отчёт")
+        lines.append(f"Дата: {datetime.now():%Y-%m-%d %H:%M:%S}")
+        model = self.model_combo.currentData()
+        lines.append(f"Модель LLM: {model['model_name']}")
+        lines.append("=" * 80)
+
+        row = rows[0].row()
+        sql_id = self.ash_table.item(row, 0).text()
+        r = self.long_query_results[row]
+        plan_hash = r.get("SQL_IDSQL_PLAN_HASH_VALUE", "")
+        lines.append(f"SQL_ID: {sql_id}")
+        lines.append(f"Plan Hash: {r.get('SQL_PLAN_HASH_VALUE', '')}")
+        lines.append(f"Elapsed (est): {r.get('ESTIMATED_ELAPSED_SECONDS', '')} s")
+        lines.append(f"Program: {r.get('PROGRAM', '')}")
+        lines.append(f"SQL:\n{r.get('SQL_TEXT', '')}")
+
+        if sql_id + '_' + plan_hash in self.plan_cache:
+            lines.append(f"\nПлан:\n{self.plan_cache[sql_id + '_' + plan_hash]}")
+        if sql_id in self.object_cache:
+            lines.append(f"\nОбъекты:\n{self.object_cache[sql_id]}")
+        if sql_id in self.llm_cache:
+            lines.append(f"\nРекомендации LLM:\n{self.llm_cache[sql_id]}")
+        lines.append("-" * 80)
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
         QMessageBox.information(self, "Экспорт", f"Отчёт сохранён: {path}")

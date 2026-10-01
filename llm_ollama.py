@@ -14,7 +14,7 @@ class OllamaLLM(BaseLLM):
         response = self.client.chat(
             model = self.model_info['model_name'],
             messages = message,
-            stream = True,            
+            stream = True,
             options = options
         )
         result = ''
