@@ -1,6 +1,6 @@
 /__pycache__
 *.bak
-/.prompts
+/.recs
 /.vscode
 /*.env
 /*.code-workspace

@@ -1,56 +1,26 @@
 import traceback
 import os
+import sys
+import importlib, importlib.util
+import re
+from pathlib import Path
 from abc import abstractmethod
 from PyQt6.QtCore import QThread, pyqtSignal
-import ollama
-from openai import OpenAI
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Поставщики LLM (Поставщики ИИ моделей)
 # ─────────────────────────────────────────────────────────────────────────────
 
 temperature = os.getenv('ORACLE_QUEUE_OPTIMIZER_LLM_TEMPERATURE', '0.3')
-temperature = float(temperature) if temperature.isdigit() else None
+temperature = float(temperature) if re.match(r"^-?\d+\.\d+$", temperature) else None
 
-# TODO перенести в файл
-SYSTEM_PROMPT = """Ты — эксперт по оптимизации Oracle Database.
-Твоя задача — проанализировать SQL-запрос, его план выполнения, 
-схему данных и существующие индексы, затем предложить конкретные шаги 
-по оптимизации.
-
-Правила:
-1. Предлагай только оптимизации, которые не требуют изменения логики запроса.
-2. Для каждого предложения укажи:
-   - Тип оптимизации (индекс, переписывание запроса, если это разрешено, изменение структуры таблицы, статистика, подсказки оптимизатору)
-   - Конкретный DDL или изменённый SQL (только как рекомендацию, не для выполнения)
-   - Ожидаемый эффект
-   - Риски и побочные эффекты
-3. Если запрос уже оптимизирован хорошо — так и скажи.
-4. Учитывай версию Oracle и особенности оптимизатора.
-5. Отвечай на русском языке.
-
-Формат ответа:
-## Анализ текущего состояния
-...
-
-## Рекомендации
-
-### Рекомендация 1: [Тип]
-**Действие**: ...
-**Код**: 
-```sql
-...
-```
-**Ожидаемый эффект**: ...
-**Риски**: ...
-
-### Рекомендация 2: [Тип]
-...
-
-## Приоритет оптимизаций
-1. ...
-2. ...
-"""
+script_dir = Path(__file__).parent.resolve()
+file_name = os.path.join(script_dir, 'prompt', 'SYSTEM_PROMPT')
+if os.path.exists(file_name):
+    with open(file_name, 'r', encoding='utf-8') as file:
+        SYSTEM_PROMPT = file.read()
+else:
+    SYSTEM_PROMPT = ""
 
 class BaseLLM:
     _registry: dict[str, type["BaseLLM"]] = {}
@@ -66,72 +36,6 @@ class BaseLLM:
     @abstractmethod
     def _ask_llm(self, message: list, sql_id: str, thread) -> str:
         pass
-
-class OllamaLLM(BaseLLM):
-    def __init__(self, model_info: dict, sql_info: dict):
-        super().__init__(model_info, sql_info)
-        if (model_info['server_name']):
-            self.client = ollama.Client(host = model_info['server_name'])
-        else:
-            self.client = ollama.Client()
-
-    def _ask_llm(self, message: list, sql_id: str, thread) -> str:
-        options = {'temperature': temperature} if temperature else {}
-        response = self.client.chat(
-            model = self.model_info['model_name'],
-            messages = message,
-            stream = True,            
-            options = options
-        )
-        result = ''
-        i = 0
-        for chunk in response:
-            content  = chunk['message']['content']
-            if content:
-                result += content
-                thread.progress.emit(sql_id, i, content)
-                i += 1
-        return result
-
-class AlibabaLLM(BaseLLM):
-    def __init__(self, model_info: dict, sql_info: dict):
-        super().__init__(model_info, sql_info)
-        base_url =self.model_info['base_url'] 
-        api_key = self.model_info['api_key']
-        self.client = OpenAI(
-            api_key = api_key,
-            base_url = base_url,
-            timeout = 3000.0,
-            max_retries = 1
-        )
-
-    def _ask_llm(self, message: list, sql_id: str, thread) -> str:
-        if temperature:
-            stream = self.client.chat.completions.create(
-                model = self.model_info['model_name'],
-                messages = message,
-                temperature = float(temperature),
-                stream = True
-            )
-        else:
-            stream = self.client.chat.completions.create(
-                model = self.model_info['model_name'],
-                messages = message,
-                stream = True
-            )
-
-        result = ''
-        i = 0
-        for chunk in stream:
-            if chunk.choices and len(chunk.choices) > 0:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    result += delta.content
-                    thread.progress.emit(sql_id, i, delta.content)
-                    i += 1
-
-        return result
-
 class LLMProvider(QThread):
     finished = pyqtSignal(str, str)  # sql_id, response
     error = pyqtSignal(str, str) # sql_id, error message
@@ -142,6 +46,28 @@ class LLMProvider(QThread):
         self.model_info = model_info
         self.sql_id = sql_id
         self.sql_info = sql_info
+
+        # если имя provider_name содержит точку - найти py файл и загрузить его
+        if "." in provider_name:
+            provider = provider_name.split(".")
+            script_dir = Path(__file__).parent.resolve()
+            file_name = os.path.join(script_dir, provider[0] + '.py')
+            module_name = provider[0]
+            if os.path.exists(file_name):
+                spec = importlib.util.spec_from_file_location(module_name, file_name)
+                if spec is None:
+                    raise ImportError(f"Не удалось создать спецификацию для {file_name}")
+                try:
+                    # Динамически импортируем модуль. 
+                    # В этот момент сработает __init_subclass__ для всех классов внутри!
+                    # importlib.import_module(import_path)
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+                    provider_name = provider[1]
+                except Exception as e:
+                    raise ValueError(f"Ошибка при загрузке {file_name}: {e}")
+
         try:
             llm_cls = BaseLLM._registry[provider_name]
         except KeyError:
