@@ -4,3 +4,4 @@ PyQt6>=6.6.0
 ollama>=0.3.0
 openai>=3.19.2
 litellm>=1.103.2
+dashscope>=1.27.7

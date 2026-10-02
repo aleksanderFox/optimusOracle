@@ -163,6 +163,11 @@ class ObjectInfoWorker(BaseWorker):
         obj_rows = cur.fetchall()
         obj_cols = [d[0] for d in cur.description]
         objects = [dict(zip(obj_cols, r)) for r in obj_rows]
+        if len(obj_rows) == 1 and objects[0]["OBJECT_TYPE"] == "INDEX":
+            cur.execute(get_query('SQL_OBJECTS_AWR2'), {"sql_id": self.sql_id})
+            obj_rows = cur.fetchall()
+            obj_cols = [d[0] for d in cur.description]
+            objects = [dict(zip(obj_cols, r)) for r in obj_rows]            
         add_objects = {}
         tables = []
 

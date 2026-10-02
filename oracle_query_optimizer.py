@@ -360,37 +360,28 @@ class MainWindow(QMainWindow):
     def on_model_changed(self, text):
         pass
 
-    def on_refresh_ash(self):
+    def on_refresh_query(self, source_name: str, source: LongQuerySource):
         if not self.connection_params:
             QMessageBox.warning(self, "Внимание", "Сначала подключитесь к Oracle")
             return
 
+        self.ash_table.clearSelection()
         self.ash_btn.setEnabled(False)
         self.long_query_progress.setVisible(True)
         self.long_query_progress.setValue(0)
 
-        self.long_query_group.setTitle("Топ-20 тяжёлых запросов (ASH)")
-        self.long_query_worker = LongQueryWorker(self.connection_params, LongQuerySource.ASH)
+        self.long_query_group.setTitle(f"Топ-20 тяжёлых запросов ({source_name})")
+        self.long_query_worker = LongQueryWorker(self.connection_params, source)
         self.long_query_worker.progress.connect(self._long_query_progress)
         self.long_query_worker.finished.connect(self._long_query_loaded)
         self.long_query_worker.error.connect(self._long_query_error)
         self.long_query_worker.start()
+
+    def on_refresh_ash(self):
+        self.on_refresh_query("ASH", LongQuerySource.ASH)
 
     def on_refresh_awr(self):
-        if not self.connection_params:
-            QMessageBox.warning(self, "Внимание", "Сначала подключитесь к Oracle")
-            return
-
-        self.awr_btn.setEnabled(False)
-        self.long_query_progress.setVisible(True)
-        self.long_query_progress.setValue(0)
-
-        self.long_query_group.setTitle("Топ-20 тяжёлых запросов (AWR)")
-        self.long_query_worker = LongQueryWorker(self.connection_params, LongQuerySource.AWR)
-        self.long_query_worker.progress.connect(self._long_query_progress)
-        self.long_query_worker.finished.connect(self._long_query_loaded)
-        self.long_query_worker.error.connect(self._long_query_error)
-        self.long_query_worker.start()
+        self.on_refresh_query("AWR", LongQuerySource.AWR)
 
     def _long_query_progress(self, val, msg):
         self.long_query_progress.setValue(val)
@@ -700,8 +691,8 @@ class MainWindow(QMainWindow):
 
         row = rows[0].row()
         sql_id = self.ash_table.item(row, 0).text()
+        plan_hash = self.ash_table.item(row, 1).text()
         r = self.long_query_results[row]
-        plan_hash = r.get("SQL_IDSQL_PLAN_HASH_VALUE", "")
         lines.append(f"SQL_ID: {sql_id}")
         lines.append(f"Plan Hash: {r.get('SQL_PLAN_HASH_VALUE', '')}")
         lines.append(f"Elapsed (est): {r.get('ESTIMATED_ELAPSED_SECONDS', '')} s")

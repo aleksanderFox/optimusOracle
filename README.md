@@ -14,6 +14,12 @@
   статистика, размер сегментов, полученные из словарей БД
 - **Анализ LLM** — отправка SQL, плана, метаданных объектов и схемы 
   в LLM модель для получения рекомендаций
+  Есть возможность подключение следующих провайдеров LLM моделей:
+  - openai
+  - dashscope
+  - ollama
+  - litellm
+  - TODO: добавить поддержку Google GenAI, Anthropic
 - **Экспорт отчёта** — сохранение всех данных и рекомендаций в текстовый файл
 
 ## Безопасность
@@ -53,6 +59,29 @@ ollama pull llama3   # или qwen2.5, codellama, mistral
 ```bash
 python oracle_query_optimizer.py
 ```
+
+## Настройки
+ORACLE_QUEUE_OPTIMIZER_ORACLE_PATH - путь к драйверам Oracle (пример: C:/oracle/product/12.1.0/client)
+ORACLE_QUEUE_OPTIMIZER_ORACLE_DNS - адрес подключения к Oracle (пример: ip_address/database_sid)
+ORACLE_QUEUE_OPTIMIZER_ORACLE_USER = имя пользователя по умолчанию
+ORACLE_QUEUE_OPTIMIZER_LLM_MODELS = JSON массив списка используемых моделей
+Пример:
+[
+    {"provider": "llm_ollama.OllamaLLM", "server_name": "http://localhost:11434", "model_name": "qwen3:14b"},
+    {"provider": "llm_lite.LiteLLM", "server_name": "http://localhost:11434", "model_name": "ollama/gemma4:26b"},
+    {"provider": "llm_alibaba.AlibabaLLM", "api_key":"API_KEY", "base_url": "https://{workspace_id}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", "model_name":"qwen3.7-plus", "is_remote": true},
+    {"provider": "llm_alibaba.AlibabaDashscope", "api_key":"API_KEY", "base_url": "https://{workspace_id}.ap-southeast-1.maas.aliyuncs.com/api/v1", "model_name":"qwen3.7-plus-2026-05-26", "workspace": "{workspace_id}", "is_remote": true}
+]
+provider - провайдер(модуль.имя_класса), который обрабатывает запрос к LLM. На текущий момент добавлено три провайдере
+  llm_ollama.OllamaLLM - подключение к ollama
+  llm_alibaba.AlibabaLLM - подключение в alibaba qwen через openai
+  llm_lite.LiteLLM - универсальный провайдер litellm
+
+Важно правильно описать модели, доступные Вам. Именно те модели, которые вы подключите, будут анализировать SQL, план, метаданные объектов и предоставлять рекомендации, которые позволят улучшить быстродействия Вашего сервера.
+Локальные модели qwen3:14b/gemma4:26b не справляются с тяжелыми запросами, содержащими множественные join
+Облачная модель qwen3.7-plus очень хорошо анализирует сложные SQL запросы и генерирует полезные советы.
+
+ORACLE_QUEUE_OPTIMIZER_LLM_TEMPERATURE - температура 
 
 ## Использование
 
