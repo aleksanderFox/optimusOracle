@@ -64,6 +64,7 @@ python oracle_query_optimizer.py
 ORACLE_QUEUE_OPTIMIZER_ORACLE_PATH - путь к драйверам Oracle (пример: C:/oracle/product/12.1.0/client)
 ORACLE_QUEUE_OPTIMIZER_ORACLE_DNS - адрес подключения к Oracle (пример: ip_address/database_sid)
 ORACLE_QUEUE_OPTIMIZER_ORACLE_USER = имя пользователя по умолчанию
+![Подключение к БД Oracle](images/OptimusOracle_connect.png)
 ORACLE_QUEUE_OPTIMIZER_LLM_MODELS = JSON массив списка используемых моделей
 Пример:
 [
@@ -72,6 +73,7 @@ ORACLE_QUEUE_OPTIMIZER_LLM_MODELS = JSON массив списка исполь�
     {"provider": "llm_alibaba.AlibabaLLM", "api_key":"API_KEY", "base_url": "https://{workspace_id}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", "model_name":"qwen3.7-plus", "is_remote": true},
     {"provider": "llm_alibaba.AlibabaDashscope", "api_key":"API_KEY", "base_url": "https://{workspace_id}.ap-southeast-1.maas.aliyuncs.com/api/v1", "model_name":"qwen3.7-plus-2026-05-26", "workspace": "{workspace_id}", "is_remote": true}
 ]
+
 provider - провайдер(модуль.имя_класса), который обрабатывает запрос к LLM. На текущий момент добавлено три провайдере
   llm_ollama.OllamaLLM - подключение к ollama
   llm_alibaba.AlibabaLLM - подключение в alibaba qwen через openai
@@ -86,14 +88,18 @@ ORACLE_QUEUE_OPTIMIZER_LLM_TEMPERATURE - температура
 ## Использование
 
 1. Нажмите **«Подключиться к Oracle»** и введите параметры подключения
+![Подключение к БД Oracle](images/OptimusOracle_connect.png)
 2. Нажмите **«Обновить ASH»** — загрузится топ-20 тяжёлых запросов из ASH
 3. Нажмите **«Обновить AWR»** — загрузится топ-20 тяжёлых запросов из AWR
 4. Выберите запрос в таблице — автоматически загрузятся план выполнения 
    и информация об объектах
+![SQL/План запроса](images/OptimusOracle_SqlPlan.png)
+![Информация об объектах](images/OptimusOracle_ObjectInfo.png)
 5. Нажмите **«Оптимизировать через LLM»** — модель проанализирует 
    запрос и предложит оптимизации
+![Рекомендации LLM](images/OptimusOracle_llm.png)
 6. Экспортируйте результат через меню **Файл → Экспорт отчёта**
-
+![Отчет об оптимизации SQL запроса](images/OptimusOracle_report.png)
 ## Системные представления Oracle
 
 Приложение обращается к следующим представлениям:
