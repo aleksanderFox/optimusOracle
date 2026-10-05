@@ -163,12 +163,12 @@ GRANT EXECUTE ON DBMS_XPLAN TO <user>;
 ☑ Поддержка Ollama, LiteLLM, DashScope, OpenAI  
 □  Поддержка Google GenAI  
 □  Поддержка Anthropic Claude  
-□  Docker-образ  
+□  Add multi language support  
 См. открытые issues для полного списка.
 
 ## Contributing
 
 Я рад вкладу в проект!
 
-🐛 Нашли баг? Откройте issue
+🐛 Нашли баг? Откройте issue  
 💡 Есть идея? Начните discussion
