@@ -30,17 +30,21 @@ Finds heavy queries via ASH/AWR and generates optimization recommendations using
 
 ## Quick Start
 
+#### 1. Клонировать и установить зависимости
 ```bash
-# 1. Клонировать и установить зависимости
 git clone https://github.com/aleksanderFox/optimusOracle.git
 cd optimusOracle
 pip install -r requirements.txt
+```
 
-# 2. (Опционально) Запустить Ollama для локальных моделей
+#### 2. (Опционально) Запустить Ollama для локальных моделей
+```bash
 ollama serve
 ollama pull llama3
+```
 
-# 3. Запустить приложение
+#### 3. Запустить приложение
+```bash
 python oracle_query_optimizer.py
 ```
 
