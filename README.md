@@ -7,8 +7,8 @@ Finds heavy queries via ASH/AWR and generates optimization recommendations using
 
 ![Optimus Oracle Demo](images/OptimusOracle_demo.gif)
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)  
-![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ## The Problem
 
@@ -42,6 +42,7 @@ ollama pull llama3
 
 # 3. Запустить приложение
 python oracle_query_optimizer.py
+```
 
 ### Зависимости
 - Python 3.10+
@@ -88,19 +89,19 @@ ORACLE_QUEUE_OPTIMIZER_LLM_MODELS — JSON-массив списка испол�
 ]
 ```
 
-### Провайдеры:
+**Провайдеры:**
 
-- llm_ollama.OllamaLLM — подключение к Ollama
-- llm_openai.OpenAILLM — подключение через OpenAI-совместимый API
-- llm_alibaba.DashscopeLLM — подключение к Alibaba Qwen через DashScope
-- llm_lite.LiteLLM — универсальный провайдер LiteLLM  
-⚠️ Важно: описывайте только те модели, к которым у вас есть доступ. Именно они будут анализировать SQL, план и метаданные объектов.
+- `llm_ollama.OllamaLLM` — подключение к Ollama
+- `llm_openai.OpenAILLM` — подключение через OpenAI-совместимый API
+- `llm_alibaba.DashscopeLLM` — подключение к Alibaba Qwen через DashScope
+- `llm_lite.LiteLLM` — универсальный провайдер LiteLLM
 
-Наблюдения по качеству моделей:
+> ⚠️ **Важно:** описывайте только те модели, к которым у вас есть доступ. Именно они будут анализировать SQL, план и метаданные объектов.
 
-Локальные модели (qwen3:14b, gemma4:26b) плохо справляются с тяжёлыми запросами, содержащими множественные JOIN
+**Наблюдения по качеству моделей:**
 
-Облачная модель qwen3.7-plus хорошо анализирует сложные SQL-запросы и генерирует полезные советы
+- Локальные модели (`qwen3:14b`, `gemma4:26b`) плохо справляются с тяжёлыми запросами, содержащими множественные JOIN
+- Облачная модель `qwen3.7-plus` хорошо анализирует сложные SQL-запросы и генерирует полезные советы
 
 ## Использование
 
@@ -159,16 +160,21 @@ GRANT EXECUTE ON DBMS_XPLAN TO <user>;
 
 ## Roadmap
 
-☑    Сбор тяжёлых запросов из ASH/AWR  
-☑ Поддержка Ollama, LiteLLM, DashScope, OpenAI  
-□  Поддержка Google GenAI  
-□  Поддержка Anthropic Claude  
-□  Add multi language support  
+- [x] Сбор тяжёлых запросов из ASH/AWR  
+- [x] Поддержка Ollama, LiteLLM, DashScope, OpenAI  
+- [ ] Поддержка Google GenAI  
+- [ ] Поддержка Anthropic Claude  
+- [ ] Add multi language support  
 См. открытые issues для полного списка.
 
 ## Contributing
 
 Я рад вкладу в проект!
 
-🐛 Нашли баг? Откройте issue  
-💡 Есть идея? Начните discussion
+🐛 Нашли баг? [Откройте issue](https://github.com/aleksanderFox/optimusOracle/issues/new)
+💡 Есть идея? Начните [discussion](https://github.com/aleksanderFox/optimusOracle/discussions)
+
+## License
+
+MIT © Aleksander Fox
+См. файл [LICENSE](LICENSE) для подробностей.
