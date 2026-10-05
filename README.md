@@ -30,29 +30,29 @@ Finds heavy queries via ASH/AWR and generates optimization recommendations using
 
 ## Quick Start
 
-#### 1. Клонировать и установить зависимости
+### Зависимости
+- Python 3.10+
+- Oracle client libraries (или `oracledb` thin mode)
+- Доступ к экземпляру Oracle с включёнными ASH/AWR
+- API-ключ для LLM (OpenAI, DashScope) **или** локальный экземпляр Ollama
+
+**1. Клонировать и установить зависимости**
 ```bash
 git clone https://github.com/aleksanderFox/optimusOracle.git
 cd optimusOracle
 pip install -r requirements.txt
 ```
 
-#### 2. (Опционально) Запустить Ollama для локальных моделей
+**2. (Опционально) Запустить Ollama для локальных моделей**
 ```bash
 ollama serve
 ollama pull llama3
 ```
 
-#### 3. Запустить приложение
+**3. Запустить приложение**
 ```bash
 python oracle_query_optimizer.py
 ```
-
-### Зависимости
-- Python 3.10+
-- Oracle client libraries (или `oracledb` thin mode)
-- Доступ к экземпляру Oracle с включенными ASH/AWR
-- API-ключ для LLM (OpenAI, Anthropic) **или** локальный экземпляр Ollama
 
 ### Установка Ollama (если требуется)
 
@@ -80,7 +80,7 @@ ollama pull llama3   # или qwen2.5, codellama, mistral
 | ORACLE_QUEUE_OPTIMIZER_ORACLE_USER     | Имя пользователя по умолчанию | system                          |
 | ORACLE_QUEUE_OPTIMIZER_LLM_TEMPERATURE | Температура LLM               | 0.3                             |
 
-## Настройка LLM-моделей
+### Настройка LLM-моделей
 
 ORACLE_QUEUE_OPTIMIZER_LLM_MODELS — JSON-массив списка используемых моделей:
 
@@ -122,7 +122,7 @@ ORACLE_QUEUE_OPTIMIZER_LLM_MODELS — JSON-массив списка испол�
    запрос и предложит оптимизации  
 ![Рекомендации LLM](images/OptimusOracle_llm.png)  
 6. Экспортируйте результат через меню **Файл → Экспорт отчёта**  
-![Отчет об оптимизации SQL запроса](images/OptimusOracle_report.png)
+![Отчёт об оптимизации SQL запроса](images/OptimusOracle_report.png)
 
 ## Системные представления Oracle
 
@@ -169,16 +169,17 @@ GRANT EXECUTE ON DBMS_XPLAN TO <user>;
 - [ ] Поддержка Google GenAI  
 - [ ] Поддержка Anthropic Claude  
 - [ ] Add multi language support  
-См. открытые issues для полного списка.
+См. [открытые issues](https://github.com/aleksanderFox/optimusOracle/issues) для полного списка.
 
 ## Contributing
 
 Я рад вкладу в проект!
 
-🐛 Нашли баг? [Откройте issue](https://github.com/aleksanderFox/optimusOracle/issues/new)
-💡 Есть идея? Начните [discussion](https://github.com/aleksanderFox/optimusOracle/discussions)
+- 🐛 Нашли баг? [Откройте issue](https://github.com/aleksanderFox/optimusOracle/issues/new)
+- 💡 Есть идея? Начните [discussion](https://github.com/aleksanderFox/optimusOracle/discussions)
 
 ## License
 
 MIT © Aleksander Fox
+
 См. файл [LICENSE](LICENSE) для подробностей.
