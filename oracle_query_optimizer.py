@@ -366,7 +366,10 @@ class MainWindow(QMainWindow):
             return
 
         self.ash_table.clearSelection()
-        self.ash_btn.setEnabled(False)
+        if source == LongQuerySource.ASH:
+            self.ash_btn.setEnabled(False)
+        elif source == LongQuerySource.AWR:
+            self.awr_btn.setEnabled(False)
         self.long_query_progress.setVisible(True)
         self.long_query_progress.setValue(0)
 
