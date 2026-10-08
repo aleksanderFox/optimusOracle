@@ -164,11 +164,11 @@ GRANT EXECUTE ON DBMS_XPLAN TO <user>;
 
 ## Roadmap
 
-- [x] Сбор тяжёлых запросов из ASH/AWR  
-- [x] Поддержка Ollama, LiteLLM, DashScope, OpenAI  
+- [x] Сбор тяжёлых запросов из ASH/AWR
+- [x] Поддержка Ollama, LiteLLM, DashScope, OpenAI
 - [ ] Поддержка Google GenAI  
-- [ ] Поддержка Anthropic Claude  
-- [ ] Add multi language support  
+- [ ] Поддержка Anthropic Claude
+- [ ] Add multi language support
 См. [открытые issues](https://github.com/aleksanderFox/optimusOracle/issues) для полного списка.
 
 ## Contributing

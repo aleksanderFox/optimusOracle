@@ -16,18 +16,21 @@ from pathlib import Path
 from datetime import datetime
 import json
 import oracledb
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTranslator, QLocale, QLibraryInfo, QEvent
 from PyQt6.QtGui import QFont, QAction
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QCheckBox,
     QGridLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QTableWidget,
     QTableWidgetItem, QTabWidget, QSplitter, QFileDialog, QGroupBox,
     QMessageBox, QProgressBar, QComboBox, QHeaderView, QPlainTextEdit,
-    QDialog, QDialogButtonBox
+    QDialog, QDialogButtonBox, QMenuBar
 )
 from workers import ( LongQueryWorker, FullSQLWorker, PlanWorker, 
     ObjectDDLWorker, ObjectInfoWorker, LongQuerySource )
 import llm_providers
+
+I18N_DIR = Path(__file__).parent / "i18n"
+BASE_LOCALE = "ru_RU"   # язык исходников — .qm для него не нужен
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Диалог подключения к Oracle
@@ -38,7 +41,7 @@ class ConnectionDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Подключение к Oracle")
+        self.setWindowTitle(self.tr("Подключение к Oracle"))
         self.setModal(True)
         self._build_ui()
 
@@ -51,17 +54,17 @@ class ConnectionDialog(QDialog):
         self.dsn_edit = QLineEdit(dsn)
         layout.addWidget(self.dsn_edit, 0, 1)
 
-        layout.addWidget(QLabel("Путь к клиенту Oracle:"), 1, 0)
+        layout.addWidget(QLabel(self.tr("Путь к клиенту Oracle:")), 1, 0)
         path = os.getenv('ORACLE_QUEUE_OPTIMIZER_ORACLE_PATH')
         self.path_edit = QLineEdit(path)
         layout.addWidget(self.path_edit, 1, 1)
 
-        layout.addWidget(QLabel("Пользователь:"), 2, 0)
+        layout.addWidget(QLabel(self.tr("Пользователь:")), 2, 0)
         user = os.getenv('ORACLE_QUEUE_OPTIMIZER_ORACLE_USER')
         self.user_edit = QLineEdit(user)
         layout.addWidget(self.user_edit, 2, 1)
 
-        layout.addWidget(QLabel("Пароль:"), 3, 0)
+        layout.addWidget(QLabel(self.tr("Пароль:")), 3, 0)
         self.pwd_edit = QLineEdit()
         self.pwd_edit.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addWidget(self.pwd_edit, 3, 1)
@@ -93,12 +96,15 @@ class ConnectionDialog(QDialog):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+
+    def __init__(self, translator: QTranslator, translator_path: str):
         super().__init__()
+        self.translator = translator
+        self.translator_path = translator_path
         self.setWindowTitle("Oracle Query Optimizer (Optimus Oracle)")
         self.resize(1400, 900)
 
-        self.connection_params: dict
+        self.connection_params: dict = {}
         self.long_query_results = []
         self.schema_cache = {}     # sql_id -> schema for tables in query 
         self.sql_cache  = {}       # sql_id -> full sql
@@ -125,21 +131,22 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central)
 
         # --- Панель подключения и настроек ---
-        ctrl_group = QGroupBox("Управление")
-        ctrl_layout = QHBoxLayout(ctrl_group)
+        self.ctrl_group = QGroupBox(self.tr("Управление"))
+        ctrl_layout = QHBoxLayout(self.ctrl_group)
 
-        self.connect_btn = QPushButton("Подключиться к Oracle")
+        self.connect_btn = QPushButton(self.tr("Подключиться к Oracle"))
         self.connect_btn.clicked.connect(self.on_connect)
         ctrl_layout.addWidget(self.connect_btn)
 
-        self.conn_status = QLabel("Статус: не подключено")
+        self.conn_status = QLabel(self.tr("Статус: не подключено"))
         ctrl_layout.addWidget(self.conn_status)
 
         ctrl_layout.addStretch()
 
-        self.llm_models_info = QLabel("Доступно N моделей LLM ") 
+        self.llm_models_info = QLabel(self.tr("Доступно N моделей LLM "))
         ctrl_layout.addWidget(self.llm_models_info)
-        ctrl_layout.addWidget(QLabel("Модель:"))
+        self.llm_name = QLabel(self.tr("Модель:"))
+        ctrl_layout.addWidget(self.llm_name)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         for model in self.models:
@@ -147,26 +154,26 @@ class MainWindow(QMainWindow):
         self.model_combo.currentTextChanged.connect(self.on_model_changed)
         ctrl_layout.addWidget(self.model_combo)
         if self.models_loaded:
-            self.llm_models_info.setText(f"Доступно {len(self.models)} моделей LLM ")
+            self.llm_models_info.setText(self.tr("Доступно {length} моделей LLM ").format(length=len(self.models)))
         else:
-            self.llm_models_info.setText("Ошибка загрузки списка моделей")
+            self.llm_models_info.setText(self.tr("Ошибка загрузки списка моделей"))
 
-        main_layout.addWidget(ctrl_group)
+        main_layout.addWidget(self.ctrl_group)
 
         # --- Основной сплиттер ---
         splitter = QSplitter(Qt.Orientation.Vertical)
 
         # Верх: таблица ASH/AWR
-        self.long_query_group = QGroupBox("Топ-20 тяжёлых запросов")
+        self.long_query_group = QGroupBox(self.tr("Топ-20 тяжёлых запросов"))
         ash_layout = QVBoxLayout(self.long_query_group)
 
         long_query_btn_row = QHBoxLayout()
-        self.ash_btn = QPushButton("Обновить ASH")
+        self.ash_btn = QPushButton(self.tr("Обновить ASH"))
         self.ash_btn.clicked.connect(self.on_refresh_ash)
         self.ash_btn.setEnabled(False)
         long_query_btn_row.addWidget(self.ash_btn)
 
-        self.awr_btn = QPushButton("Обновить AWR")
+        self.awr_btn = QPushButton(self.tr("Обновить AWR"))
         self.awr_btn.clicked.connect(self.on_refresh_awr)
         self.awr_btn.setEnabled(False)
         long_query_btn_row.addWidget(self.awr_btn)
@@ -212,13 +219,13 @@ class MainWindow(QMainWindow):
 
         self.sql_text_view = QPlainTextEdit()
         self.sql_text_view.setReadOnly(True)
-        self.sql_text_view.setPlaceholderText("Текст SQL-запроса появится здесь...")
+        self.sql_text_view.setPlaceholderText(self.tr("Текст SQL-запроса появится здесь..."))
         sql_font = QFont("Consolas", 10)
         self.sql_text_view.setFont(sql_font)
 
         self.plan_text_view = QPlainTextEdit()
         self.plan_text_view.setReadOnly(True)
-        self.plan_text_view.setPlaceholderText("План выполнения появится здесь...")
+        self.plan_text_view.setPlaceholderText(self.tr("План выполнения появится здесь..."))
         self.plan_text_view.setFont(sql_font)
 
         sql_splitter.addWidget(self.sql_text_view)
@@ -231,7 +238,7 @@ class MainWindow(QMainWindow):
         sql_plan_layout.setContentsMargins(0, 0, 0, 0)
         sql_plan_layout.addWidget(sql_splitter)
 
-        self.detail_tabs.addTab(sql_plan_widget, "SQL / План")
+        self.detail_tabs.addTab(sql_plan_widget, self.tr("SQL / План"))
 
         ##################################################
         # Вкладка: Информация об объектах
@@ -241,12 +248,12 @@ class MainWindow(QMainWindow):
         self.object_info_view = QPlainTextEdit()
         self.object_info_view.setReadOnly(True)
         self.object_info_view.setPlaceholderText(
-            "Информация об объектах (таблицы, индексы, статистика)..."
+            self.tr("Информация об объектах (таблицы, индексы, статистика)...")
         )
         self.object_info_view.setFont(sql_font)
         object_info_layout.addWidget(self.object_info_view)
         
-        self.detail_tabs.addTab(object_info_widget, "Информация об объектах")
+        self.detail_tabs.addTab(object_info_widget, self.tr("Информация об объектах"))
 
         ##################################################
         # Вкладка: Информация DDL объектов
@@ -256,12 +263,12 @@ class MainWindow(QMainWindow):
         self.object_ddl_view = QPlainTextEdit()
         self.object_ddl_view.setReadOnly(True)
         self.object_ddl_view.setPlaceholderText(
-            "DDL объектов запроса (таблицы, индексы)..."
+            self.tr("DDL объектов запроса (таблицы, индексы)...")
         )
         self.object_ddl_view.setFont(sql_font)
         object_ddl_layout.addWidget(self.object_ddl_view)
         
-        self.detail_tabs.addTab(object_ddl_widget, "DDL объектов запроса")
+        self.detail_tabs.addTab(object_ddl_widget, self.tr("DDL объектов запроса"))
 
         ################################################
         # Вкладка: рекомендации LLM
@@ -269,17 +276,17 @@ class MainWindow(QMainWindow):
         llm_layout = QVBoxLayout(llm_widget)
 
         llm_btn_row = QHBoxLayout()
-        self.analyze_btn = QPushButton("Оптимизировать используя LLM")
+        self.analyze_btn = QPushButton(self.tr("Оптимизировать используя LLM"))
         self.analyze_btn.clicked.connect(self.on_analyze)
         self.analyze_btn.setEnabled(False)
         llm_btn_row.addWidget(self.analyze_btn)
 
-        self.copy_analyze_btn = QPushButton("Копировать")
+        self.copy_analyze_btn = QPushButton(self.tr("Копировать"))
         self.copy_analyze_btn.clicked.connect(self.on_copy_analyze)
         self.copy_analyze_btn.setEnabled(False)
         llm_btn_row.addWidget(self.copy_analyze_btn)
 
-        self.can_change_query_checkbox = QCheckBox("Предлагать переписывание запроса")
+        self.can_change_query_checkbox = QCheckBox(self.tr("Предлагать переписывание запроса"))
         self.can_change_query_checkbox.setChecked(True)
         llm_btn_row.addWidget(self.can_change_query_checkbox)
 
@@ -292,40 +299,61 @@ class MainWindow(QMainWindow):
         self.llm_output = QTextEdit()
         self.llm_output.setReadOnly(True)
         self.llm_output.setPlaceholderText(
-            "Рекомендации по оптимизации от LLM появятся здесь..."
+            self.tr("Рекомендации по оптимизации от LLM появятся здесь...")
         )
         self.llm_output.setFont(QFont("Consolas", 10))
         llm_layout.addWidget(self.llm_output)
 
-        self.detail_tabs.addTab(llm_widget, "Рекомендации LLM")
+        self.detail_tabs.addTab(llm_widget, self.tr("Рекомендации LLM"))
 
         splitter.addWidget(self.detail_tabs)
         splitter.setSizes([350, 550])
 
         main_layout.addWidget(splitter)
 
+    def _build_language_menu(self, menubar: QMenuBar | None):
+        files = [
+            f for f in I18N_DIR.rglob('*')
+            if f.is_file() and f.suffix == '.qm'
+        ]
+        self.language_menu = None
+        if len(files) > 1:
+            self.language_menu = menubar.addMenu(self.tr("Язык"))
+            for file in files:
+                locale = file.name.replace('translation_', '').replace('.qm', '')
+                language_action = self.language_menu.addAction(locale)
+                language_action.setData(language_action)
+                language_action.setCheckable(True)
+                if self.translator_path == str(file):
+                    language_action.setChecked(True)
+                else:
+                    language_action.setChecked(False)
+                language_action.triggered.connect(self.on_language_change)
+
     def _build_menu(self):
         menubar = self.menuBar()
 
-        file_menu = menubar.addMenu("Файл")
+        self.file_menu = menubar.addMenu(self.tr("Файл"))
 
-        export_all_data_action = QAction("Экспорт отчёта для всех данных...", self)
-        export_all_data_action.triggered.connect(self.on_export_all_data_report)
-        file_menu.addAction(export_all_data_action)
+        self.export_all_data_action = QAction(self.tr("Экспорт отчёта для всех данных..."), self)
+        self.export_all_data_action.triggered.connect(self.on_export_all_data_report)
+        self.file_menu.addAction(self.export_all_data_action)
 
-        export_selected_data_action = QAction("Экспорт отчёта текущей записи...", self)
-        export_selected_data_action.triggered.connect(self.on_export_selected_data_report)
-        file_menu.addAction(export_selected_data_action)
+        self.export_selected_data_action = QAction(self.tr("Экспорт отчёта текущей записи..."), self)
+        self.export_selected_data_action.triggered.connect(self.on_export_selected_data_report)
+        self.file_menu.addAction(self.export_selected_data_action)
 
-        file_menu.addSeparator()
-        exit_action = QAction("Выход", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
+        self.file_menu.addSeparator()
+        self.exit_action = QAction(self.tr("Выход"), self)
+        self.exit_action.triggered.connect(self.close)
+        self.file_menu.addAction(self.exit_action)
 
-        help_menu = menubar.addMenu("Справка")
-        about_action = QAction("О программе", self)
-        about_action.triggered.connect(self.on_about)
-        help_menu.addAction(about_action)
+        self._build_language_menu(menubar)
+
+        self.help_menu = menubar.addMenu(self.tr("Справка"))
+        self.about_action = QAction(self.tr("О программе"), self)
+        self.about_action.triggered.connect(self.on_about)
+        self.help_menu.addAction(self.about_action)
 
     # ── Слоты ─────────────────────────────────────────────────────────────────
 
@@ -354,7 +382,7 @@ class MainWindow(QMainWindow):
                 self.ash_btn.click()
             except Exception as e:
                 QMessageBox.critical(
-                    self, "Ошибка подключения", str(e)
+                    self, self.tr("Ошибка подключения"), str(e)
                 )
 
     def on_model_changed(self, text):
@@ -362,10 +390,17 @@ class MainWindow(QMainWindow):
 
     def on_refresh_query(self, source_name: str, source: LongQuerySource):
         if not self.connection_params:
-            QMessageBox.warning(self, "Внимание", "Сначала подключитесь к Oracle")
+            QMessageBox.warning(self, self.tr("Внимание"), self.tr("Сначала подключитесь к Oracle"))
             return
 
+
         self.ash_table.clearSelection()
+        self.sql_text_view.setPlainText('')
+        self.plan_text_view.setPlainText('')
+        self.object_info_view.setPlainText('')
+        self.object_ddl_view.setPlainText('')
+        self.llm_output.setPlainText('')
+
         if source == LongQuerySource.ASH:
             self.ash_btn.setEnabled(False)
         elif source == LongQuerySource.AWR:
@@ -373,7 +408,7 @@ class MainWindow(QMainWindow):
         self.long_query_progress.setVisible(True)
         self.long_query_progress.setValue(0)
 
-        self.long_query_group.setTitle(f"Топ-20 тяжёлых запросов ({source_name})")
+        self.long_query_group.setTitle(self.tr("Топ-20 тяжёлых запросов {source_name}").format(source_name=source_name))
         self.long_query_worker = LongQueryWorker(self.connection_params, source)
         self.long_query_worker.progress.connect(self._long_query_progress)
         self.long_query_worker.finished.connect(self._long_query_loaded)
@@ -396,12 +431,12 @@ class MainWindow(QMainWindow):
         if source == LongQuerySource.ASH:
             self.ash_btn.setEnabled(True)
             self.elapsed_label.setText(
-                f"Загружено: {len(results)} запросов из ASH в {datetime.now():%H:%M:%S}"
+                self.tr("Загружено: {length} запросов из ASH в {dt}").format(length=len(results), dt=datetime.now().strftime('%H:%M:%S'))
             )
         elif source == LongQuerySource.AWR:
             self.awr_btn.setEnabled(True)
             self.elapsed_label.setText(
-                f"Загружено: {len(results)} запросов из AWR в {datetime.now():%H:%M:%S}"
+                self.tr("Загружено: {length} запросов из AWR в {dt}").format(length=len(results), dt=datetime.now().strftime('%H:%M:%S'))
             )
         self._populate_long_query_table(results)
 
@@ -409,10 +444,10 @@ class MainWindow(QMainWindow):
         self.long_query_progress.setVisible(False)
         if source == LongQuerySource.ASH:
             self.ash_btn.setEnabled(True)
-            QMessageBox.critical(self, "Ошибка ASH", msg)
+            QMessageBox.critical(self, self.tr("Ошибка ASH"), msg)
         elif source == LongQuerySource.AWR:
             self.awr_btn.setEnabled(True)
-            QMessageBox.critical(self, "Ошибка AWR", msg)
+            QMessageBox.critical(self, self.tr("Ошибка AWR"), msg)
 
     def _populate_long_query_table(self, results):
         self.ash_table.setRowCount(len(results))
@@ -450,9 +485,9 @@ class MainWindow(QMainWindow):
         sql_text_full = self.long_query_results[row].get("SQL_TEXT", "")
 
         self.sql_text_view.setPlainText(sql_text_full)
-        self.plan_text_view.setPlaceholderText("Загрузка плана...")
-        self.object_info_view.setPlaceholderText("Загрузка объектов...")
-        self.object_ddl_view.setPlaceholderText("Загрузка DDL...")
+        self.plan_text_view.setPlaceholderText(self.tr("Загрузка плана..."))
+        self.object_info_view.setPlaceholderText(self.tr("Загрузка объектов..."))
+        self.object_ddl_view.setPlaceholderText(self.tr("Загрузка DDL..."))
         self.llm_output.clear()
 
         # Загружаем информацию о SQL 
@@ -499,7 +534,7 @@ class MainWindow(QMainWindow):
             self.sql_text_view.setPlainText(sql_full_text)
 
     def _full_sql_error(self, msg):
-        self.sql_text_view.setPlainText(f"Ошибка получения полного текста SQL: {msg}")
+        self.sql_text_view.setPlainText(self.tr("Ошибка получения полного текста SQL: {msg}").format(msg=msg))
         
     def _load_plan(self, sql_id, plan_hash):
         self.plan_worker = PlanWorker(self.connection_params, sql_id, plan_hash)
@@ -513,7 +548,7 @@ class MainWindow(QMainWindow):
             self.plan_text_view.setPlainText(plan_text)
 
     def _plan_error(self, msg):
-        self.plan_text_view.setPlainText(f"Ошибка загрузки плана: {msg}")
+        self.plan_text_view.setPlainText(self.tr("Ошибка загрузки плана: {msg}").format(msg=msg))
 
     def _load_object_info(self, sql_id):
         self.obj_worker = ObjectInfoWorker(self.connection_params, sql_id)
@@ -531,7 +566,7 @@ class MainWindow(QMainWindow):
 
     def _obj_error(self, msg):
         self.object_info_view.setPlainText(
-            f"Ошибка загрузки объектов: {msg}"
+            self.tr("Ошибка загрузки объектов: {msg}").format(msg=msg)
         )
 
     def _load_object_ddl(self, sql_id, table_list):
@@ -547,7 +582,7 @@ class MainWindow(QMainWindow):
 
     def _ddl_error(self, msg):
         self.object_ddl_view.setPlainText(
-            f"Ошибка загрузки DDL: {msg}"
+            self.tr("Ошибка загрузки DDL: {msg}").format(msg=msg)
         )
 
     def on_analyze(self):
@@ -571,7 +606,7 @@ class MainWindow(QMainWindow):
         self.llm_output.clear()
 
         self.llm_output.setPlainText(
-            f"Отправка данных в LLM ({model['model_name']})...\n"
+            self.tr("Отправка данных в LLM ({model_name})...\n").format(model_name= model['model_name'])
         )
         model = self.model_combo.currentData()
         self.llm_worker = llm_providers.LLMProvider(provider_name = model['provider'],
@@ -601,7 +636,7 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(True)
         self.copy_analyze_btn.setEnabled(True)
         if self._current_sql_id() == sql_id:
-            self.llm_output.setPlainText(f"Ошибка LLM: {msg}\n\n")
+            self.llm_output.setPlainText(self.tr("Ошибка LLM: {msg}\n\n").format(msg=msg))
 
     def _llm_progress(self, sql_id, index, msg):
         if self._current_sql_id() == sql_id:
@@ -628,11 +663,11 @@ class MainWindow(QMainWindow):
 
     def on_export_all_data_report(self):
         if not self.long_query_results:
-            QMessageBox.information(self, "Экспорт", "Нет данных для экспорта")
+            QMessageBox.information(self, self.tr("Экспорт"), self.tr("Нет данных для экспорта"))
             return
 
         path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить отчёт",
+            self, self.tr("Сохранить отчёт"),
             f"oracle_optimization_{datetime.now():%Y%m%d_%H%M%S}.txt",
             "Text files (*.txt);;All files (*)"
         )
@@ -640,16 +675,16 @@ class MainWindow(QMainWindow):
             return
 
         lines = []
-        lines.append(f"Oracle Query Optimizer — Отчёт")
-        lines.append(f"Дата: {datetime.now():%Y-%m-%d %H:%M:%S}")
+        lines.append(self.tr("Oracle Query Optimizer — Отчёт"))
+        lines.append(self.tr("Дата: {dt}").format(dt=datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         model = self.model_combo.currentData()
-        lines.append(f"Модель LLM: {model['model_name']}")
+        lines.append(self.tr("Модель LLM: {model_name}").format(model_name=model['model_name']))
         lines.append("=" * 80)
 
         for i, r in enumerate(self.long_query_results, 1):
             sql_id = r.get("SQL_ID", "")
             plan_hash = r.get("SQL_IDSQL_PLAN_HASH_VALUE", "")
-            lines.append(f"\n--- Запрос #{i} ---")
+            lines.append(self.tr("\n--- Запрос #{i} ---").format(i=i))
             lines.append(f"SQL_ID: {sql_id}")
             lines.append(f"Plan Hash: {r.get('SQL_PLAN_HASH_VALUE', '')}")
             lines.append(f"Elapsed (est): {r.get('ESTIMATED_ELAPSED_SECONDS', '')} s")
@@ -657,28 +692,28 @@ class MainWindow(QMainWindow):
             lines.append(f"SQL:\n{r.get('SQL_TEXT', '')}")
 
             if sql_id + '_' + plan_hash in self.plan_cache:
-                lines.append(f"\nПлан:\n{self.plan_cache[sql_id + '_' + plan_hash]}")
+                lines.append(self.tr("\nПлан:") + f"\n{self.plan_cache[sql_id + '_' + plan_hash]}")
             if sql_id in self.object_cache:
-                lines.append(f"\nОбъекты:\n{self.object_cache[sql_id]}")
+                lines.append(self.tr("\nОбъекты:") + f"\n{self.object_cache[sql_id]}")
             if sql_id in self.llm_cache:
-                lines.append(f"\nРекомендации LLM:\n{self.llm_cache[sql_id]}")
+                lines.append(self.tr("\nРекомендации LLM:") +f"\n{self.llm_cache[sql_id]}")
             lines.append("-" * 80)
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
-        QMessageBox.information(self, "Экспорт", f"Отчёт сохранён: {path}")
+        QMessageBox.information(self, self.tr("Экспорт"), self.tr("Отчёт сохранён: {path}").format(path=path))
 
     def on_export_selected_data_report(self):
         if not self.long_query_results:
-            QMessageBox.information(self, "Экспорт", "Нет данных для экспорта")
+            QMessageBox.information(self, self.tr("Экспорт"), self.tr("Нет данных для экспорта"))
             return
 
         rows = self.ash_table.selectionModel().selectedRows()
         if not rows:
-            QMessageBox.information(self, "Экспорт", "Нет выделенной записи для экспорта")
+            QMessageBox.information(self, self.tr("Экспорт"), self.tr("Нет выделенной записи для экспорта"))
             return
 
         path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить отчёт",
+            self, self.tr("Сохранить отчёт"),
             f"oracle_optimization_{datetime.now():%Y%m%d_%H%M%S}.txt",
             "Text files (*.txt);;All files (*)"
         )
@@ -686,10 +721,10 @@ class MainWindow(QMainWindow):
             return
 
         lines = []
-        lines.append(f"Oracle Query Optimizer — Отчёт")
-        lines.append(f"Дата: {datetime.now():%Y-%m-%d %H:%M:%S}")
+        lines.append(self.tr("Oracle Query Optimizer — Отчёт"))
+        lines.append(self.tr("Дата: {dt}").format(dt=datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         model = self.model_combo.currentData()
-        lines.append(f"Модель LLM: {model['model_name']}")
+        lines.append(self.tr("Модель LLM: {model_name}").format(model_name=model['model_name']))
         lines.append("=" * 80)
 
         row = rows[0].row()
@@ -703,34 +738,117 @@ class MainWindow(QMainWindow):
         lines.append(f"SQL:\n{r.get('SQL_TEXT', '')}")
 
         if sql_id + '_' + plan_hash in self.plan_cache:
-            lines.append(f"\nПлан:\n{self.plan_cache[sql_id + '_' + plan_hash]}")
+            lines.append(self.tr("\nПлан:") + f"\n{self.plan_cache[sql_id + '_' + plan_hash]}")
         if sql_id in self.object_cache:
-            lines.append(f"\nОбъекты:\n{self.object_cache[sql_id]}")
+            lines.append(self.tr("\nОбъекты:") + f"\n{self.object_cache[sql_id]}")
         if sql_id in self.llm_cache:
-            lines.append(f"\nРекомендации LLM:\n{self.llm_cache[sql_id]}")
+            lines.append(self.tr("\nРекомендации LLM:") +f"\n{self.llm_cache[sql_id]}")
         lines.append("-" * 80)
 
         Path(path).write_text("\n".join(lines), encoding="utf-8")
-        QMessageBox.information(self, "Экспорт", f"Отчёт сохранён: {path}")
+        QMessageBox.information(self, self.tr("Экспорт"), self.tr("Отчёт сохранён: {path}").format(path=path))
 
     def on_about(self):
         QMessageBox.about(
             self,
-            "О программе",
-            "<h3>Oracle Query Optimizer (Optimus Oracle)</h3>"
-            "<p>Поиск тяжёлых запросов в Oracle ASH/AWR и оптимизация "
-            "через LLM модели.</p>"
-            "<p><b>Возможности:</b></p>"
-            "<ul>"
-            "<li>Топ-20 тяжёлых запросов из ASH/AWR</li>"
-            "<li>Загрузка планов выполнения из AWR</li>"
-            "<li>Информация об объектах, индексах, статистике</li>"
-            "<li>Рекомендации по оптимизации от LLM</li>"
-            "<li>Экспорт отчёта</li>"
-            "</ul>"
-            "<p><b>Автор: Лисичкин Александр alisichkin@mail.ru.</p>"
+            self.tr("О программе"),
+            self.tr(
+                "<h3>Oracle Query Optimizer (Optimus Oracle)</h3>"
+                "<p>Поиск тяжёлых запросов в Oracle ASH/AWR и оптимизация "
+                "через LLM модели.</p>"
+                "<p><b>Возможности:</b></p>"
+                "<ul>"
+                "<li>Топ-20 тяжёлых запросов из ASH/AWR</li>"
+                "<li>Загрузка планов выполнения из AWR</li>"
+                "<li>Информация об объектах, индексах, статистике</li>"
+                "<li>Рекомендации по оптимизации от LLM</li>"
+                "<li>Экспорт отчёта</li>"
+                "</ul>"
+                "<p><b>Автор: Лисичкин Александр alisichkin@mail.ru.</p>"
+            )
         )
 
+    def retranslate_ui(self):
+        self.file_menu.setTitle(self.tr("Файл"))
+        self.export_all_data_action.setText(self.tr("Экспорт отчёта для всех данных..."))
+        self.export_selected_data_action.setText(self.tr("Экспорт отчёта текущей записи..."))
+        self.exit_action.setText(self.tr("Выход"))
+        if self.language_menu:
+            self.language_menu.setTitle(self.tr("Язык"))
+        self.help_menu.setTitle(self.tr("Справка"))
+        self.about_action.setText(self.tr("О программе"))
+        ########################################
+        self.ctrl_group.setTitle(self.tr("Управление"))
+        self.connect_btn.setText(self.tr("Подключиться к Oracle"))
+        if not self.connection_params:
+            self.conn_status.setText(self.tr("Статус: не подключено"))
+        else:
+            self.conn_status.setText(
+                    f"Статус: подключено ({self.connection_params['user']})"
+                )
+        self.llm_models_info.setText(self.tr("Доступно N моделей LLM "))
+        if self.models_loaded:
+            self.llm_models_info.setText(self.tr("Доступно {length} моделей LLM ").format(length=len(self.models)))
+        else:
+            self.llm_models_info.setText(self.tr("Ошибка загрузки списка моделей"))
+        self.llm_name.setText(self.tr("Модель:"))
+        ########################################
+        self.long_query_group.setTitle(self.tr("Топ-20 тяжёлых запросов"))
+        self.ash_btn.setText(self.tr("Обновить ASH"))
+        self.awr_btn.setText(self.tr("Обновить AWR"))
+        ########################################
+        self.sql_text_view.setPlaceholderText(self.tr("Текст SQL-запроса появится здесь..."))
+        self.plan_text_view.setPlaceholderText(self.tr("План выполнения появится здесь..."))
+        self.detail_tabs.setTabText(0, self.tr("SQL / План"))
+        ########################################
+        self.object_info_view.setPlaceholderText(
+            self.tr("Информация об объектах (таблицы, индексы, статистика)...")
+        )
+        self.detail_tabs.setTabText(1, self.tr("Информация об объектах"))
+        ########################################
+        self.object_ddl_view.setPlaceholderText(
+            self.tr("DDL объектов запроса (таблицы, индексы)...")
+        )
+        self.detail_tabs.setTabText(2, self.tr("DDL объектов запроса"))
+        ########################################
+        self.analyze_btn.setText(self.tr("Оптимизировать используя LLM"))
+        self.copy_analyze_btn.setText(self.tr("Копировать"))
+        self.can_change_query_checkbox.setText(self.tr("Предлагать переписывание запроса"))
+        self.llm_output.setPlaceholderText(
+            self.tr("Рекомендации по оптимизации от LLM появятся здесь...")
+        )
+        self.detail_tabs.setTabText(3, self.tr("Рекомендации LLM"))
+
+    def changeEvent(self, a0):
+        if a0.type() == QEvent.Type.LanguageChange:
+            self.retranslate_ui()
+        super().changeEvent(a0)
+                            
+    def on_language_change(self):
+        if not self:
+            return
+        action: QAction = self.sender() # type: ignore
+        locale = action.text()
+        path = I18N_DIR / f"translation_{locale}.qm"
+        if self.translator_path != str(path):
+            QApplication.instance().removeTranslator(self.translator)
+            self.translator = QTranslator()
+            if self.translator.load(str(path)):
+                QApplication.instance().installTranslator(self.translator)
+                self.translator_path = str(path)
+            for action in self.language_menu.actions():
+                if action.text() != locale:
+                    action.setChecked(False)
+            
+
+def load_translation(app: QApplication, locale: str) -> tuple[QTranslator, str]:
+    translator = QTranslator()
+    path = I18N_DIR / f"translation_{locale}.qm"
+    if not os.path.exists(path) and locale != "ru_RU":
+        path = I18N_DIR / f"translation_ru_RU.qm"
+    if translator.load(str(path)):
+        app.installTranslator(translator)
+    return translator, str(path)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Точка входа
@@ -738,8 +856,19 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+
+    # Also translate Qt's built-in dialogs (Yes/No, file dialogs, etc.)
+    qt_translator = QTranslator()
+    qt_path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if qt_translator.load(f"qtbase_{QLocale.system().name()}", qt_path):
+        app.installTranslator(qt_translator)
+
+    locale = QLocale.system().name()
+    locale = os.getenv('ORACLE_QUEUE_OPTIMIZER_DEFAULT_LANGUAGE', locale)
+    translator, path = load_translation(app, locale)
+
     app.setApplicationName("Oracle Query Optimizer")
-    window = MainWindow()
+    window = MainWindow(translator, path)
     window.show()
     sys.exit(app.exec())
 
